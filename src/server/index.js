@@ -21,7 +21,7 @@ class MetabaseMCPServer {
     this.server = new Server(
       {
         name: 'metabase-mcp-server',
-        version: '2.0.0',
+        version: '2.1.0',
         instructions: `# Metabase MCP Server - General Guidelines
 
 ## 🎯 Core Principles
@@ -31,6 +31,49 @@ class MetabaseMCPServer {
 4. **Check permissions**: Some tools require admin access (list_users)
 5. **Use MCP Snowflake for advanced analysis**: If you need to run custom SQL or validate findings, use the MCP Snowflake integration.
 
+## 🔒 CRITICAL SAFETY RULES FOR WRITE OPERATIONS (PUT & POST)
+
+### ⛔ MANDATORY USER VALIDATION BEFORE ANY WRITE OPERATION
+**ALWAYS follow these steps for ANY PUT or POST operation:**
+
+1. **STOP and ASK for explicit user confirmation** - Never execute write operations without user approval
+2. **EXPLAIN what will be created/modified** - Clearly describe the operation and its impact
+3. **SHOW the exact data** that will be sent to the API
+4. **WAIT for explicit "yes", "confirm", or "proceed"** from the user
+5. **Only then execute** the operation after receiving confirmation
+
+### 🚨 Write Operations Requiring Explicit User Confirmation:
+- ✏️ **create_card**: Creating new questions/cards
+- ✏️ **update_card**: Modifying existing questions/cards
+- 📁 **create_collection**: Creating new collections/folders
+- 📁 **update_collection**: Modifying existing collections
+- 📊 **create_dashboard**: Creating new dashboards
+- 📊 **update_dashboard**: Modifying existing dashboards
+- 📊 **update_dashboard_cards**: Adding/removing/repositioning cards on dashboards
+- 🗄️ **create_database**: Creating new database connections (REQUIRES ADMIN)
+- 🗄️ **update_database**: Modifying database connections (REQUIRES ADMIN)
+
+### Example User Interaction for Write Operations:
+\`\`\`
+❌ WRONG: Directly executing create_card without asking
+✅ CORRECT:
+1. "I will create a new card with the following details:
+   - Name: 'Monthly Sales Report'
+   - Query: SELECT * FROM sales WHERE month = '2024-11'
+   - Display: table
+   - Collection: Sales Reports (ID: 5)
+   
+   Do you want me to proceed with creating this card? (yes/no)"
+2. Wait for user response
+3. Only if user says "yes", "confirm", or "proceed", then execute the operation
+\`\`\`
+
+### 🔴 Risk Levels:
+- **🟢 SAFE tools**: Read-only operations, no data modification, safe to use anytime (no confirmation needed)
+- **🟡 MODERATE RISK tools**: Execute queries (read-only but may be slow/resource-intensive - no confirmation needed)
+- **🔴 HIGH RISK tools**: Write operations that create/modify resources (ALWAYS require user confirmation)
+- **🔴 VERY HIGH RISK tools**: Database connection operations (ALWAYS require user confirmation + admin permissions)
+
 ## 📊 Recommended Workflows
 
 ### When analyzing a card/question:
@@ -38,6 +81,14 @@ class MetabaseMCPServer {
 2. Use get_card to see the SQL query and understand what it does
 3. Check if parameters are needed before executing
 4. Use execute_card_query to get actual data
+
+### When creating or modifying resources (REQUIRES USER CONFIRMATION):
+1. **First**: Gather all necessary information (names, IDs, queries, etc.)
+2. **Then**: Present the complete operation details to the user
+3. **Ask**: "Do you want me to proceed with this operation?"
+4. **Wait**: For explicit user confirmation
+5. **Only then**: Execute the write operation
+6. **Never skip** asking for confirmation, even if the user seems to expect it
 
 ### When exploring a database:
 1. Use list_databases to see available data sources
@@ -52,12 +103,11 @@ class MetabaseMCPServer {
 
 ## ⚠️ Important Notes
 
-### Risk Levels:
-- **🟢 SAFE tools**: Read-only operations, no data modification, safe to use anytime
-- **🟡 MODERATE RISK tools**: Execute queries (read-only but may be slow/resource-intensive)
+### Permissions:
 - Card IDs and Dashboard IDs can be found in Metabase URLs or through search/list operations
 - Database IDs are required for many operations - get them from list_databases
 - Some tools may not be available in all Metabase versions (list_metrics, get_activity) - they fail gracefully
+- Database creation/modification requires admin permissions
 
 ### Performance Considerations:
 - list_cards can return 15k+ items - results are limited to first 50 in display
@@ -75,7 +125,8 @@ class MetabaseMCPServer {
 - Dashboard IDs are in URLs: /dashboard/[ID]
 - Use "root" as collectionId to access the root collection
 - Admin-only tools will return 403 errors if you lack permissions
-- Empty arrays from list_metrics or get_activity indicate the feature isn't available in your Metabase version`,
+- Empty arrays from list_metrics or get_activity indicate the feature isn't available in your Metabase version
+- NEVER execute write operations (PUT/POST) without explicit user confirmation`,
       },
       {
         capabilities: {
@@ -445,6 +496,338 @@ class MetabaseMCPServer {
               required: ['cardId', 'parameters'],
             },
           },
+
+          // ========== WRITE OPERATIONS - CARDS (High Risk) ==========
+          {
+            name: 'create_card',
+            description: '✏️ [HIGH RISK] Create a new card (question) in Metabase. Use this to programmatically create saved questions. Risk: High - creates new resources in Metabase.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'The name of the card',
+                  minLength: 1,
+                },
+                description: {
+                  type: 'string',
+                  description: 'Optional description of the card',
+                },
+                dataset_query: {
+                  type: 'object',
+                  description: 'The dataset query object (native SQL or query builder)',
+                  additionalProperties: true,
+                },
+                display: {
+                  type: 'string',
+                  description: 'Display type (e.g., "table", "bar", "line")',
+                },
+                visualization_settings: {
+                  type: 'object',
+                  description: 'Visualization settings',
+                  additionalProperties: true,
+                },
+                collection_id: {
+                  type: 'integer',
+                  description: 'ID of the collection to place the card in',
+                },
+              },
+              required: ['name', 'dataset_query', 'display'],
+            },
+          },
+          {
+            name: 'update_card',
+            description: '✏️ [HIGH RISK] Update an existing card (question) in Metabase. Use this to modify saved questions. Risk: High - modifies existing resources in Metabase.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                cardId: {
+                  type: 'integer',
+                  description: 'The ID of the card to update',
+                  minimum: 1,
+                },
+                name: {
+                  type: 'string',
+                  description: 'The name of the card',
+                },
+                description: {
+                  type: 'string',
+                  description: 'Description of the card',
+                },
+                dataset_query: {
+                  type: 'object',
+                  description: 'The dataset query object',
+                  additionalProperties: true,
+                },
+                display: {
+                  type: 'string',
+                  description: 'Display type',
+                },
+                visualization_settings: {
+                  type: 'object',
+                  description: 'Visualization settings',
+                  additionalProperties: true,
+                },
+                collection_id: {
+                  type: 'integer',
+                  description: 'ID of the collection',
+                },
+              },
+              required: ['cardId'],
+            },
+          },
+
+          // ========== WRITE OPERATIONS - COLLECTIONS (High Risk) ==========
+          {
+            name: 'create_collection',
+            description: '📁 [HIGH RISK] Create a new collection (folder) in Metabase. Use this to organize cards and dashboards. Risk: High - creates new organizational structure.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'The name of the collection',
+                  minLength: 1,
+                },
+                description: {
+                  type: 'string',
+                  description: 'Optional description of the collection',
+                },
+                color: {
+                  type: 'string',
+                  description: 'Color for the collection (e.g., "#509EE3")',
+                },
+                parent_id: {
+                  type: 'integer',
+                  description: 'ID of the parent collection (omit for root level)',
+                },
+              },
+              required: ['name'],
+            },
+          },
+          {
+            name: 'update_collection',
+            description: '📁 [HIGH RISK] Update an existing collection in Metabase. Use this to modify collection properties. Risk: High - modifies organizational structure.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                collectionId: {
+                  type: 'integer',
+                  description: 'The ID of the collection to update',
+                  minimum: 1,
+                },
+                name: {
+                  type: 'string',
+                  description: 'The name of the collection',
+                },
+                description: {
+                  type: 'string',
+                  description: 'Description of the collection',
+                },
+                color: {
+                  type: 'string',
+                  description: 'Color for the collection',
+                },
+                archived: {
+                  type: 'boolean',
+                  description: 'Whether the collection is archived',
+                },
+              },
+              required: ['collectionId'],
+            },
+          },
+
+          // ========== WRITE OPERATIONS - DASHBOARDS (High Risk) ==========
+          {
+            name: 'create_dashboard',
+            description: '📊 [HIGH RISK] Create a new dashboard in Metabase. Use this to programmatically create dashboards. Risk: High - creates new resources in Metabase.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'The name of the dashboard',
+                  minLength: 1,
+                },
+                description: {
+                  type: 'string',
+                  description: 'Optional description of the dashboard',
+                },
+                collection_id: {
+                  type: 'integer',
+                  description: 'ID of the collection to place the dashboard in',
+                },
+                parameters: {
+                  type: 'array',
+                  description: 'Dashboard parameters (filters)',
+                  items: {
+                    type: 'object',
+                  },
+                },
+              },
+              required: ['name'],
+            },
+          },
+          {
+            name: 'update_dashboard',
+            description: '📊 [HIGH RISK] Update an existing dashboard in Metabase. Use this to modify dashboard properties. Risk: High - modifies existing resources.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                dashboardId: {
+                  type: 'integer',
+                  description: 'The ID of the dashboard to update',
+                  minimum: 1,
+                },
+                name: {
+                  type: 'string',
+                  description: 'The name of the dashboard',
+                },
+                description: {
+                  type: 'string',
+                  description: 'Description of the dashboard',
+                },
+                collection_id: {
+                  type: 'integer',
+                  description: 'ID of the collection',
+                },
+                parameters: {
+                  type: 'array',
+                  description: 'Dashboard parameters',
+                  items: {
+                    type: 'object',
+                  },
+                },
+                archived: {
+                  type: 'boolean',
+                  description: 'Whether the dashboard is archived',
+                },
+              },
+              required: ['dashboardId'],
+            },
+          },
+          {
+            name: 'update_dashboard_cards',
+            description: '📊 [HIGH RISK] Update cards within a dashboard (bulk update). Use this to add, remove, or reposition cards on a dashboard. Risk: High - modifies dashboard layout and content.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                dashboardId: {
+                  type: 'integer',
+                  description: 'The ID of the dashboard',
+                  minimum: 1,
+                },
+                cards: {
+                  type: 'array',
+                  description: 'Array of dashboard cards with positioning and configuration',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: {
+                        type: 'integer',
+                        description: 'Dashboard card ID (for updates)',
+                      },
+                      card_id: {
+                        type: 'integer',
+                        description: 'The card/question ID to add',
+                      },
+                      row: {
+                        type: 'integer',
+                        description: 'Row position',
+                      },
+                      col: {
+                        type: 'integer',
+                        description: 'Column position',
+                      },
+                      size_x: {
+                        type: 'integer',
+                        description: 'Width in grid units',
+                      },
+                      size_y: {
+                        type: 'integer',
+                        description: 'Height in grid units',
+                      },
+                    },
+                  },
+                },
+              },
+              required: ['dashboardId', 'cards'],
+            },
+          },
+
+          // ========== WRITE OPERATIONS - DATABASES (Very High Risk) ==========
+          {
+            name: 'create_database',
+            description: '🗄️ [VERY HIGH RISK] Create a new database connection in Metabase. Use this to add new data sources. Risk: Very High - creates database connections with credentials. Requires admin permissions.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'The name of the database connection',
+                  minLength: 1,
+                },
+                engine: {
+                  type: 'string',
+                  description: 'Database engine type (e.g., "postgres", "mysql", "snowflake")',
+                },
+                details: {
+                  type: 'object',
+                  description: 'Connection details (host, port, database name, credentials, etc.)',
+                  additionalProperties: true,
+                },
+                is_full_sync: {
+                  type: 'boolean',
+                  description: 'Whether to perform a full sync',
+                },
+                is_on_demand: {
+                  type: 'boolean',
+                  description: 'Whether to scan only on-demand',
+                },
+              },
+              required: ['name', 'engine', 'details'],
+            },
+          },
+          {
+            name: 'update_database',
+            description: '🗄️ [VERY HIGH RISK] Update an existing database connection in Metabase. Use this to modify connection settings. Risk: Very High - modifies database connections. Requires admin permissions.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                databaseId: {
+                  type: 'integer',
+                  description: 'The ID of the database to update',
+                  minimum: 1,
+                },
+                name: {
+                  type: 'string',
+                  description: 'The name of the database connection',
+                },
+                engine: {
+                  type: 'string',
+                  description: 'Database engine type',
+                },
+                details: {
+                  type: 'object',
+                  description: 'Connection details',
+                  additionalProperties: true,
+                },
+                is_full_sync: {
+                  type: 'boolean',
+                  description: 'Whether to perform a full sync',
+                },
+                is_on_demand: {
+                  type: 'boolean',
+                  description: 'Whether to scan only on-demand',
+                },
+                auto_run_queries: {
+                  type: 'boolean',
+                  description: 'Whether to auto-run queries',
+                },
+              },
+              required: ['databaseId'],
+            },
+          },
         ],
       };
     });
@@ -517,6 +900,32 @@ class MetabaseMCPServer {
             return await this.executeQueryBuilderCard(args.cardId, args.parameters);
           case 'get_generated_sql':
             return await this.getGeneratedSQL(args.cardId, args.parameters);
+          
+          // Write operations - Cards
+          case 'create_card':
+            return await this.createCard(args);
+          case 'update_card':
+            return await this.updateCard(args.cardId, args);
+          
+          // Write operations - Collections
+          case 'create_collection':
+            return await this.createCollection(args);
+          case 'update_collection':
+            return await this.updateCollection(args.collectionId, args);
+          
+          // Write operations - Dashboards
+          case 'create_dashboard':
+            return await this.createDashboard(args);
+          case 'update_dashboard':
+            return await this.updateDashboard(args.dashboardId, args);
+          case 'update_dashboard_cards':
+            return await this.updateDashboardCards(args.dashboardId, args.cards);
+          
+          // Write operations - Databases
+          case 'create_database':
+            return await this.createDatabase(args);
+          case 'update_database':
+            return await this.updateDatabase(args.databaseId, args);
           
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -1328,6 +1737,454 @@ ${JSON.stringify(results, null, 2)}`,
           {
             type: 'text',
             text: `Error generating SQL: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // ========== WRITE OPERATIONS - CARDS ==========
+  
+  /**
+   * Create a new card (question) in Metabase
+   * @param {Object} cardData - Card data including name, dataset_query, display, etc.
+   * @returns {Object} Created card information
+   */
+  async createCard(cardData) {
+    try {
+      const body = {
+        name: cardData.name,
+        description: cardData.description || null,
+        dataset_query: cardData.dataset_query,
+        display: cardData.display,
+        visualization_settings: cardData.visualization_settings || {},
+        collection_id: cardData.collection_id || null,
+      };
+
+      const card = await this.makeApiRequest('/api/card', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Card Created Successfully:
+ID: ${card.id}
+Name: ${card.name}
+Description: ${card.description || 'No description'}
+Database ID: ${card.dataset_query?.database}
+Query Type: ${card.dataset_query?.type}
+Collection ID: ${card.collection_id}
+Created: ${card.created_at}
+
+You can view the card at: ${METABASE_URL}/question/${card.id}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating card: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * Update an existing card
+   * @param {number} cardId - The card ID to update
+   * @param {Object} updates - Updated card data
+   * @returns {Object} Updated card information
+   */
+  async updateCard(cardId, updates) {
+    try {
+      // Get the current card first
+      const currentCard = await this.makeApiRequest(`/api/card/${cardId}`);
+      
+      // Merge updates with current card data
+      const body = {
+        name: updates.name || currentCard.name,
+        description: updates.description !== undefined ? updates.description : currentCard.description,
+        dataset_query: updates.dataset_query || currentCard.dataset_query,
+        display: updates.display || currentCard.display,
+        visualization_settings: updates.visualization_settings || currentCard.visualization_settings,
+        collection_id: updates.collection_id !== undefined ? updates.collection_id : currentCard.collection_id,
+      };
+
+      const card = await this.makeApiRequest(`/api/card/${cardId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Card Updated Successfully:
+ID: ${card.id}
+Name: ${card.name}
+Description: ${card.description || 'No description'}
+Updated: ${card.updated_at}
+
+You can view the card at: ${METABASE_URL}/question/${card.id}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error updating card: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // ========== WRITE OPERATIONS - COLLECTIONS ==========
+  
+  /**
+   * Create a new collection
+   * @param {Object} collectionData - Collection data including name, description, etc.
+   * @returns {Object} Created collection information
+   */
+  async createCollection(collectionData) {
+    try {
+      const body = {
+        name: collectionData.name,
+        description: collectionData.description || null,
+        color: collectionData.color || '#509EE3',
+        parent_id: collectionData.parent_id || null,
+      };
+
+      const collection = await this.makeApiRequest('/api/collection', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Collection Created Successfully:
+ID: ${collection.id}
+Name: ${collection.name}
+Description: ${collection.description || 'No description'}
+Color: ${collection.color}
+Parent ID: ${collection.parent_id || 'Root level'}
+Slug: ${collection.slug}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating collection: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * Update an existing collection
+   * @param {number} collectionId - The collection ID to update
+   * @param {Object} updates - Updated collection data
+   * @returns {Object} Updated collection information
+   */
+  async updateCollection(collectionId, updates) {
+    try {
+      // Get the current collection first
+      const currentCollection = await this.makeApiRequest(`/api/collection/${collectionId}`);
+      
+      // Merge updates with current collection data
+      const body = {
+        name: updates.name || currentCollection.name,
+        description: updates.description !== undefined ? updates.description : currentCollection.description,
+        color: updates.color || currentCollection.color,
+        archived: updates.archived !== undefined ? updates.archived : currentCollection.archived,
+      };
+
+      const collection = await this.makeApiRequest(`/api/collection/${collectionId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Collection Updated Successfully:
+ID: ${collection.id}
+Name: ${collection.name}
+Description: ${collection.description || 'No description'}
+Color: ${collection.color}
+Archived: ${collection.archived}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error updating collection: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // ========== WRITE OPERATIONS - DASHBOARDS ==========
+  
+  /**
+   * Create a new dashboard
+   * @param {Object} dashboardData - Dashboard data including name, description, etc.
+   * @returns {Object} Created dashboard information
+   */
+  async createDashboard(dashboardData) {
+    try {
+      const body = {
+        name: dashboardData.name,
+        description: dashboardData.description || null,
+        collection_id: dashboardData.collection_id || null,
+        parameters: dashboardData.parameters || [],
+      };
+
+      const dashboard = await this.makeApiRequest('/api/dashboard', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Dashboard Created Successfully:
+ID: ${dashboard.id}
+Name: ${dashboard.name}
+Description: ${dashboard.description || 'No description'}
+Collection ID: ${dashboard.collection_id}
+Created: ${dashboard.created_at}
+
+You can view the dashboard at: ${METABASE_URL}/dashboard/${dashboard.id}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating dashboard: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * Update an existing dashboard
+   * @param {number} dashboardId - The dashboard ID to update
+   * @param {Object} updates - Updated dashboard data
+   * @returns {Object} Updated dashboard information
+   */
+  async updateDashboard(dashboardId, updates) {
+    try {
+      // Get the current dashboard first
+      const currentDashboard = await this.makeApiRequest(`/api/dashboard/${dashboardId}`);
+      
+      // Merge updates with current dashboard data
+      const body = {
+        name: updates.name || currentDashboard.name,
+        description: updates.description !== undefined ? updates.description : currentDashboard.description,
+        collection_id: updates.collection_id !== undefined ? updates.collection_id : currentDashboard.collection_id,
+        parameters: updates.parameters || currentDashboard.parameters,
+        archived: updates.archived !== undefined ? updates.archived : currentDashboard.archived,
+      };
+
+      const dashboard = await this.makeApiRequest(`/api/dashboard/${dashboardId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Dashboard Updated Successfully:
+ID: ${dashboard.id}
+Name: ${dashboard.name}
+Description: ${dashboard.description || 'No description'}
+Updated: ${dashboard.updated_at}
+
+You can view the dashboard at: ${METABASE_URL}/dashboard/${dashboard.id}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error updating dashboard: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * Update dashboard cards (bulk update)
+   * @param {number} dashboardId - The dashboard ID
+   * @param {Array} cards - Array of dashboard cards with positioning
+   * @returns {Object} Update result
+   */
+  async updateDashboardCards(dashboardId, cards) {
+    try {
+      const body = {
+        cards: cards,
+      };
+
+      const result = await this.makeApiRequest(`/api/dashboard/${dashboardId}/cards`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Dashboard Cards Updated Successfully:
+Dashboard ID: ${dashboardId}
+Number of cards updated: ${cards.length}
+
+Result:
+${JSON.stringify(result, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error updating dashboard cards: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // ========== WRITE OPERATIONS - DATABASES ==========
+  
+  /**
+   * Create a new database connection
+   * @param {Object} databaseData - Database connection data
+   * @returns {Object} Created database information
+   */
+  async createDatabase(databaseData) {
+    try {
+      const body = {
+        name: databaseData.name,
+        engine: databaseData.engine,
+        details: databaseData.details,
+        is_full_sync: databaseData.is_full_sync !== undefined ? databaseData.is_full_sync : true,
+        is_on_demand: databaseData.is_on_demand !== undefined ? databaseData.is_on_demand : false,
+      };
+
+      const database = await this.makeApiRequest('/api/database', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Database Created Successfully:
+ID: ${database.id}
+Name: ${database.name}
+Engine: ${database.engine}
+Created: ${database.created_at}
+
+Note: The database will begin syncing metadata. This may take some time.`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating database: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * Update an existing database connection
+   * @param {number} databaseId - The database ID to update
+   * @param {Object} updates - Updated database data
+   * @returns {Object} Updated database information
+   */
+  async updateDatabase(databaseId, updates) {
+    try {
+      // Get the current database first
+      const currentDatabase = await this.makeApiRequest(`/api/database/${databaseId}`);
+      
+      // Merge updates with current database data
+      const body = {
+        name: updates.name || currentDatabase.name,
+        engine: updates.engine || currentDatabase.engine,
+        details: updates.details || currentDatabase.details,
+        is_full_sync: updates.is_full_sync !== undefined ? updates.is_full_sync : currentDatabase.is_full_sync,
+        is_on_demand: updates.is_on_demand !== undefined ? updates.is_on_demand : currentDatabase.is_on_demand,
+        auto_run_queries: updates.auto_run_queries !== undefined ? updates.auto_run_queries : currentDatabase.auto_run_queries,
+      };
+
+      const database = await this.makeApiRequest(`/api/database/${databaseId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Database Updated Successfully:
+ID: ${database.id}
+Name: ${database.name}
+Engine: ${database.engine}
+Updated: ${database.updated_at}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error updating database: ${error.message}`,
           },
         ],
         isError: true,

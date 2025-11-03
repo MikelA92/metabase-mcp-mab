@@ -1,6 +1,17 @@
 # Metabase MCP Server
 
-A Model Context Protocol (MCP) server that enables LLMs to interact with your Metabase instance. This server provides 27 tools for querying cards, dashboards, databases, collections, and executing queries against your Metabase installation.
+A Model Context Protocol (MCP) server that enables LLMs to interact with your Metabase instance. This server provides **36 tools** for querying, creating, and modifying cards, dashboards, databases, collections, and executing queries against your Metabase installation.
+
+## 🔴 New in v2.1.0: Write Operations (PUT & POST)
+
+**Important**: This version adds 9 new write operations that can **create and modify** resources in your Metabase instance. These operations require **explicit user confirmation** before execution for safety.
+
+- ✏️ Create and update cards (questions)
+- 📁 Create and update collections
+- 📊 Create and update dashboards (including card layouts)
+- 🗄️ Create and update database connections (admin only)
+
+**See [WRITE_OPERATIONS.md](./WRITE_OPERATIONS.md) for detailed documentation on safe usage.**
 
 ## 🚀 Quick Start
 
@@ -110,9 +121,11 @@ const results = await client.executeCardQuery(17033, {param: 'value'});
 
 ## 🛠️ Available Tools
 
-This MCP server provides **27 tools** organized into categories:
+This MCP server provides **36 tools** organized into categories:
 
-### Card Tools (Questions/Queries)
+### 📖 Read Operations (27 tools)
+
+#### Card Tools (Questions/Queries)
 - `get_card` - Get card details and SQL query
 - `list_cards` - List cards with filtering
 - `execute_card_query` - Execute saved queries
@@ -120,31 +133,50 @@ This MCP server provides **27 tools** organized into categories:
 - `get_generated_sql` - Get generated SQL for query builder cards
 - `get_card_with_parameters` - Extract card info from dashboard URLs
 
-### Dashboard Tools
+#### Dashboard Tools
 - `get_dashboard` - Get dashboard details
 - `list_dashboards` - List all dashboards
 
-### Database & Table Tools
+#### Database & Table Tools
 - `get_database` - Get database information
 - `list_databases` - List all databases
 - `get_database_metadata` - Get comprehensive database schema
 - `list_database_tables` - List tables in a database
 - `get_table_metadata` - Get detailed table information
 
-### Collection Tools
+#### Collection Tools
 - `list_collections` - List all collections (folders)
 - `get_collection_items` - Get items in a collection
 
-### Query Execution
+#### Query Execution
 - `execute_native_query` - Execute custom SQL queries
 
-### Field & Column Tools
+#### Field & Column Tools
 - `get_field` - Get field/column information
 - `get_field_values` - Get distinct values for a field
 
-### Segments & Metrics
+#### Segments & Metrics
 - `list_segments` - List saved filter segments
 - `list_metrics` - List saved aggregations
+
+### ✏️ Write Operations (9 tools) - 🔴 Requires User Confirmation
+
+#### Card Write Operations
+- `create_card` - Create new cards (questions) **[REQUIRES CONFIRMATION]**
+- `update_card` - Update existing cards **[REQUIRES CONFIRMATION]**
+
+#### Collection Write Operations
+- `create_collection` - Create new collections (folders) **[REQUIRES CONFIRMATION]**
+- `update_collection` - Update existing collections **[REQUIRES CONFIRMATION]**
+
+#### Dashboard Write Operations
+- `create_dashboard` - Create new dashboards **[REQUIRES CONFIRMATION]**
+- `update_dashboard` - Update existing dashboards **[REQUIRES CONFIRMATION]**
+- `update_dashboard_cards` - Bulk update dashboard card layout **[REQUIRES CONFIRMATION]**
+
+#### Database Write Operations (Admin Only)
+- `create_database` - Create new database connections **[REQUIRES CONFIRMATION + ADMIN]**
+- `update_database` - Update database connections **[REQUIRES CONFIRMATION + ADMIN]**
 
 ### Activity & Users
 - `get_activity` - Get recent activity feed
