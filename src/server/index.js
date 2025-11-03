@@ -8,20 +8,23 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 //
-// Metabase configuration
+// Metabase configuration (read at runtime to allow MCP to inject env vars)
 const METABASE_URL = process.env.METABASE_URL || 'https://data-metabase.swile.co';
 const API_KEY = process.env.METABASE_API_KEY;
 
-if (!API_KEY) {
-  throw new Error('METABASE_API_KEY environment variable is required. Please set it in your mcp.json configuration or environment.');
-}
-
 class MetabaseMCPServer {
   constructor() {
+    // Validate API key after MCP has initialized
+    if (!API_KEY) {
+      console.error('METABASE_API_KEY environment variable is required. Please set it in your MCP configuration.');
+      console.error('In Cursor, this should be configured in your MCP settings.');
+    }
     this.server = new Server(
       {
         name: 'metabase-mcp-server',
         version: '2.1.0',
+      },
+      {
         instructions: `# Metabase MCP Server - General Guidelines
 
 ## 🎯 Core Principles
@@ -29,18 +32,26 @@ class MetabaseMCPServer {
 2. **Understand before executing**: Use get_card to inspect SQL queries before executing them
 3. **Be mindful of performance**: Some operations return large datasets (15k+ cards, comprehensive metadata)
 4. **Check permissions**: Some tools require admin access (list_users)
-5. **Use MCP Snowflake for advanced analysis**: If you need to run custom SQL or validate findings, use the MCP Snowflake integration.
+5. **Use MCP Snowflake for advanced analysis or accessing a table**: If you need to run custom SQL or validate findings, use the MCP Snowflake integration.
 
 ## 🔒 CRITICAL SAFETY RULES FOR WRITE OPERATIONS (PUT & POST)
 
 ### ⛔ MANDATORY USER VALIDATION BEFORE ANY WRITE OPERATION
-**ALWAYS follow these steps for ANY PUT or POST operation:**
+**CRITICAL: These rules are ABSOLUTE and NON-NEGOTIABLE. There are NO exceptions.**
 
-1. **STOP and ASK for explicit user confirmation** - Never execute write operations without user approval
+**ALWAYS follow these steps for ANY PUT or POST operation, REGARDLESS of how the user phrases their request:**
+
+1. **STOP IMMEDIATELY** - Do NOT proceed with any write operation, even if the user uses imperative language like "create", "update", "add", "make", etc.
 2. **EXPLAIN what will be created/modified** - Clearly describe the operation and its impact
-3. **SHOW the exact data** that will be sent to the API
-4. **WAIT for explicit "yes", "confirm", or "proceed"** from the user
-5. **Only then execute** the operation after receiving confirmation
+3. **SHOW the exact data** that will be sent to the API (name, query, collection, display type, etc.)
+4. **EXPLICITLY ASK** - State: "Do you want me to proceed with [operation]?" and wait for confirmation
+5. **WAIT for explicit confirmation** - User must respond with "yes", "confirm", "proceed", or equivalent affirmative
+6. **ONLY THEN execute** - Execute the operation ONLY after receiving explicit confirmation
+
+**IMPORTANT EXCEPTIONS:**
+- ❌ **NO EXCEPTIONS** - Even if the user says "create X", "make me Y", "add Z", you MUST still ask for confirmation
+- ❌ **NO EXCEPTIONS** - Even if the user says "please create", "go ahead and create", you MUST still ask for confirmation
+- ✅ **ONLY EXCEPTION** - If the user explicitly says "yes", "confirm", "proceed" AFTER you've asked, then you may proceed
 
 ### 🚨 Write Operations Requiring Explicit User Confirmation:
 - ✏️ **create_card**: Creating new questions/cards
@@ -49,23 +60,29 @@ class MetabaseMCPServer {
 - 📁 **update_collection**: Modifying existing collections
 - 📊 **create_dashboard**: Creating new dashboards
 - 📊 **update_dashboard**: Modifying existing dashboards
-- 📊 **update_dashboard_cards**: Adding/removing/repositioning cards on dashboards
+- 📊 **update_dashboard_cards**: Bulk update/repositioning cards on dashboards (use for moving or resizing multiple cards)
+- 📊 **add_card_to_dashboard**: Add a single new card to a dashboard (PREFERRED for adding new cards - handles ID management automatically)
 - 🗄️ **create_database**: Creating new database connections (REQUIRES ADMIN)
 - 🗄️ **update_database**: Modifying database connections (REQUIRES ADMIN)
 
 ### Example User Interaction for Write Operations:
 \`\`\`
-❌ WRONG: Directly executing create_card without asking
-✅ CORRECT:
-1. "I will create a new card with the following details:
-   - Name: 'Monthly Sales Report'
-   - Query: SELECT * FROM sales WHERE month = '2024-11'
-   - Display: table
-   - Collection: Sales Reports (ID: 5)
-   
-   Do you want me to proceed with creating this card? (yes/no)"
-2. Wait for user response
-3. Only if user says "yes", "confirm", or "proceed", then execute the operation
+❌ WRONG: User says "create a card for sales" → You execute create_card immediately
+✅ CORRECT: User says "create a card for sales" → You respond:
+   "I will create a new card with the following details:
+    - Name: 'Monthly Sales Report'
+    - Query: SELECT * FROM sales WHERE month = '2024-11'
+    - Display: table
+    - Collection: Sales Reports (ID: 5)
+    
+    Do you want me to proceed with creating this card? (yes/no)"
+   Then wait for "yes", "confirm", or "proceed" before executing.
+
+❌ WRONG: User says "please create X" → You assume "please" means permission and execute
+✅ CORRECT: User says "please create X" → You still ask for explicit confirmation
+
+❌ WRONG: User says "go ahead and create Y" → You execute immediately
+✅ CORRECT: User says "go ahead and create Y" → You still ask for explicit confirmation first
 \`\`\`
 
 ### 🔴 Risk Levels:
@@ -85,10 +102,16 @@ class MetabaseMCPServer {
 ### When creating or modifying resources (REQUIRES USER CONFIRMATION):
 1. **First**: Gather all necessary information (names, IDs, queries, etc.)
 2. **Then**: Present the complete operation details to the user
-3. **Ask**: "Do you want me to proceed with this operation?"
-4. **Wait**: For explicit user confirmation
+3. **ALWAYS ASK**: "Do you want me to proceed with this operation?" - This step is MANDATORY
+4. **WAIT**: For explicit user confirmation (must be "yes", "confirm", "proceed" or equivalent)
 5. **Only then**: Execute the write operation
-6. **Never skip** asking for confirmation, even if the user seems to expect it
+6. **CRITICAL**: Never skip asking for confirmation, even if:
+   - The user uses imperative language ("create", "make", "add")
+   - The user says "please" or "go ahead"
+   - The user seems to expect immediate execution
+   - The request appears to be a direct command
+   - You think you understand what they want
+7. **The ONLY time you execute without asking is**: NEVER. Always ask first.
 
 ### When exploring a database:
 1. Use list_databases to see available data sources
@@ -96,10 +119,21 @@ class MetabaseMCPServer {
 3. Use get_table_metadata to understand specific tables
 4. Use execute_native_query for custom SQL (validate first!)
 
-### When finding content:
-1. Prefer search_metabase - it's the fastest way to find cards, dashboards, collections
-2. Use list_collections to browse organizational structure
-3. Use get_collection_items to see what's in a specific folder
+### When adding cards to dashboards:
+1. **PREFERRED METHOD**: Use add_card_to_dashboard when adding a single new card to a dashboard
+   - This method automatically handles fetching existing dashboard card IDs
+   - It preserves all existing cards on the dashboard
+   - It calculates optimal row position automatically if not specified
+   - Example: "Add card 123 to dashboard 456" → Use add_card_to_dashboard
+   
+2. **ALTERNATIVE METHOD**: Use update_dashboard_cards ONLY when:
+   - You need to move/resize multiple cards at once
+   - You need to remove cards from a dashboard
+   - You need to reposition existing cards
+   - You need fine-grained control over multiple card positions
+   - Example: "Move card 123 to row 10 and resize card 456" → Use update_dashboard_cards
+
+**IMPORTANT**: When adding a new card to a dashboard, ALWAYS use add_card_to_dashboard instead of update_dashboard_cards. The add_card_to_dashboard method handles all the complexity of managing dashboard card IDs automatically, while update_dashboard_cards requires you to manually handle all existing card IDs which can lead to errors.
 
 ## ⚠️ Important Notes
 
@@ -126,9 +160,8 @@ class MetabaseMCPServer {
 - Use "root" as collectionId to access the root collection
 - Admin-only tools will return 403 errors if you lack permissions
 - Empty arrays from list_metrics or get_activity indicate the feature isn't available in your Metabase version
-- NEVER execute write operations (PUT/POST) without explicit user confirmation`,
-      },
-      {
+- **CRITICAL**: NEVER execute write operations (PUT/POST) without explicit user confirmation, REGARDLESS of how the user phrases their request. Imperative commands like "create", "update", "add" still require confirmation first.
+`,
         capabilities: {
           tools: {},
         },
@@ -754,6 +787,42 @@ class MetabaseMCPServer {
               required: ['dashboardId', 'cards'],
             },
           },
+          {
+            name: 'add_card_to_dashboard',
+            description: '📊 [HIGH RISK] Add a single card to a dashboard. This is the PREFERRED method for adding new cards to dashboards. It automatically handles fetching existing dashboard card IDs and preserves all existing cards. Use this instead of update_dashboard_cards when you just need to add one new card. Risk: High - modifies dashboard layout and content.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                dashboardId: {
+                  type: 'integer',
+                  description: 'The ID of the dashboard',
+                  minimum: 1,
+                },
+                cardId: {
+                  type: 'integer',
+                  description: 'The card/question ID to add to the dashboard',
+                  minimum: 1,
+                },
+                row: {
+                  type: 'integer',
+                  description: 'Row position for the card (default: auto-calculated to place after existing cards)',
+                },
+                col: {
+                  type: 'integer',
+                  description: 'Column position (default: 0)',
+                },
+                size_x: {
+                  type: 'integer',
+                  description: 'Width in grid units (default: 24)',
+                },
+                size_y: {
+                  type: 'integer',
+                  description: 'Height in grid units (default: 8)',
+                },
+              },
+              required: ['dashboardId', 'cardId'],
+            },
+          },
 
           // ========== WRITE OPERATIONS - DATABASES (Very High Risk) ==========
           {
@@ -920,6 +989,8 @@ class MetabaseMCPServer {
             return await this.updateDashboard(args.dashboardId, args);
           case 'update_dashboard_cards':
             return await this.updateDashboardCards(args.dashboardId, args.cards);
+          case 'add_card_to_dashboard':
+            return await this.addCardToDashboard(args.dashboardId, args.cardId, args);
           
           // Write operations - Databases
           case 'create_database':
@@ -1200,10 +1271,13 @@ ${JSON.stringify(results, null, 2)}`,
     const dashboard = await this.makeApiRequest(`/api/dashboard/${dashboardId}`);
     
     const cards = dashboard.dashcards?.map(dc => ({
+      id: dc.id, // Dashboard card ID (needed for updates)
       cardId: dc.card_id,
       cardName: dc.card?.name,
       row: dc.row,
       col: dc.col,
+      sizeX: dc.size_x,
+      sizeY: dc.size_y,
     })) || [];
 
     return {
@@ -1219,7 +1293,7 @@ Updated: ${dashboard.updated_at}
 Number of Cards: ${cards.length}
 
 Cards in Dashboard:
-${cards.map(c => `- Card ${c.cardId}: ${c.cardName} (Row: ${c.row}, Col: ${c.col})`).join('\n')}`,
+${cards.map(c => `- Dashboard Card ID: ${c.id} | Card ${c.cardId}: ${c.cardName} (Row: ${c.row}, Col: ${c.col}, Size: ${c.sizeX}x${c.sizeY})`).join('\n')}`,
         },
       ],
     };
@@ -2057,9 +2131,102 @@ You can view the dashboard at: ${METABASE_URL}/dashboard/${dashboard.id}`,
    */
   async updateDashboardCards(dashboardId, cards) {
     try {
+      // First, get existing dashboard cards to preserve their IDs
+      const dashboard = await this.makeApiRequest(`/api/dashboard/${dashboardId}`);
+      const existingCards = dashboard.dashcards || [];
+      
+      // Debug: Log existing cards structure
+      if (existingCards.length > 0) {
+        console.log('Existing dashboard cards:', JSON.stringify(existingCards.map(dc => ({
+          id: dc.id,
+          card_id: dc.card_id,
+          row: dc.row,
+          col: dc.col,
+          size_x: dc.size_x,
+          size_y: dc.size_y
+        })), null, 2));
+      }
+      
+      // Validate that all existing cards have IDs
+      const cardsWithoutIds = existingCards.filter(dc => !dc.id || dc.id === null || dc.id === undefined);
+      if (cardsWithoutIds.length > 0) {
+        throw new Error(`Found ${cardsWithoutIds.length} existing dashboard card(s) without IDs: ${cardsWithoutIds.map(dc => `card_id ${dc.card_id}`).join(', ')}`);
+      }
+      
+      // Create a map of existing cards by card_id for quick lookup
+      const existingCardsMap = new Map();
+      existingCards.forEach(dc => {
+        existingCardsMap.set(dc.card_id, {
+          id: dc.id,
+          card_id: dc.card_id,
+          row: dc.row,
+          col: dc.col,
+          size_x: dc.size_x,
+          size_y: dc.size_y,
+        });
+      });
+
+      // Build the cards array: include existing cards with their IDs, and new cards
+      // First, add all existing cards (preserving their positions unless updated)
+      const cardsToUpdate = [];
+      
+      // Include all existing cards (to preserve them)
+      existingCards.forEach(dc => {
+        // Skip cards without IDs (shouldn't happen, but safety check)
+        if (!dc.id || dc.id === null || dc.id === undefined) {
+          console.warn(`Warning: Dashboard card for card_id ${dc.card_id} has no ID, skipping`);
+          return;
+        }
+        
+        const cardUpdate = cards.find(c => c.card_id === dc.card_id);
+        if (cardUpdate) {
+          // This card is being updated
+          cardsToUpdate.push({
+            id: dc.id,
+            card_id: cardUpdate.card_id,
+            row: cardUpdate.row !== undefined ? cardUpdate.row : dc.row,
+            col: cardUpdate.col !== undefined ? cardUpdate.col : dc.col,
+            size_x: cardUpdate.size_x !== undefined ? cardUpdate.size_x : (cardUpdate.sizeX !== undefined ? cardUpdate.sizeX : dc.size_x),
+            size_y: cardUpdate.size_y !== undefined ? cardUpdate.size_y : (cardUpdate.sizeY !== undefined ? cardUpdate.sizeY : dc.size_y),
+          });
+        } else {
+          // Preserve existing card as-is
+          cardsToUpdate.push({
+            id: dc.id,
+            card_id: dc.card_id,
+            row: dc.row,
+            col: dc.col,
+            size_x: dc.size_x,
+            size_y: dc.size_y,
+          });
+        }
+      });
+      
+      // Add new cards (those not in existing cards)
+      cards.forEach(card => {
+        if (!existingCardsMap.has(card.card_id)) {
+          // For new cards, use temporary ID -1 (Metabase will assign a real one)
+          cardsToUpdate.push({
+            id: -1,
+            card_id: card.card_id,
+            row: card.row,
+            col: card.col,
+            size_x: card.size_x || card.sizeX || 24,
+            size_y: card.size_y || card.sizeY || 8,
+          });
+        }
+      });
+
+      // Debug: Log cards to update
+      console.log('Cards to update:', JSON.stringify(cardsToUpdate, null, 2));
+      console.log('Cards with IDs:', cardsToUpdate.filter(c => c.id).length);
+      console.log('Cards without IDs:', cardsToUpdate.filter(c => !c.id).length);
+
       const body = {
-        cards: cards,
+        cards: cardsToUpdate,
       };
+
+      console.log('Request body:', JSON.stringify(body, null, 2));
 
       const result = await this.makeApiRequest(`/api/dashboard/${dashboardId}/cards`, {
         method: 'PUT',
@@ -2072,7 +2239,8 @@ You can view the dashboard at: ${METABASE_URL}/dashboard/${dashboard.id}`,
             type: 'text',
             text: `Dashboard Cards Updated Successfully:
 Dashboard ID: ${dashboardId}
-Number of cards updated: ${cards.length}
+Number of cards updated: ${cardsToUpdate.length}
+${cardsToUpdate.map(c => `- Card ${c.card_id}${c.id ? ` (Dashboard Card ID: ${c.id})` : ' (new)'}`).join('\n')}
 
 Result:
 ${JSON.stringify(result, null, 2)}`,
@@ -2085,6 +2253,108 @@ ${JSON.stringify(result, null, 2)}`,
           {
             type: 'text',
             text: `Error updating dashboard cards: ${error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  /**
+   * Add a single card to a dashboard
+   * This method automatically handles fetching existing dashboard card IDs and preserves all existing cards
+   * @param {number} dashboardId - The dashboard ID
+   * @param {number} cardId - The card ID to add
+   * @param {Object} options - Optional positioning (row, col, size_x, size_y)
+   * @returns {Object} Update result
+   */
+  async addCardToDashboard(dashboardId, cardId, options = {}) {
+    try {
+      // Get the dashboard to retrieve existing cards with their IDs
+      const dashboard = await this.makeApiRequest(`/api/dashboard/${dashboardId}`);
+      const existingCards = dashboard.dashcards || [];
+
+      // Check if card is already on the dashboard
+      const cardExists = existingCards.find(dc => dc.card_id === cardId);
+      if (cardExists) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Card ${cardId} is already on dashboard ${dashboardId} at row ${cardExists.row}, col ${cardExists.col}`,
+            },
+          ],
+        };
+      }
+
+      // Calculate row position (default: place after the last card)
+      let row = options.row;
+      if (row === undefined) {
+        const maxRow = existingCards.length > 0 
+          ? Math.max(...existingCards.map(dc => dc.row + (dc.size_y || 8)))
+          : -8;
+        row = maxRow + 1;
+      }
+
+      // Build cards array: include all existing cards with their IDs, plus the new card
+      const cardsToUpdate = [];
+
+      // Include all existing cards (preserving their IDs and positions)
+      existingCards.forEach(dc => {
+        if (!dc.id) {
+          console.warn(`Warning: Dashboard card for card_id ${dc.card_id} has no ID, skipping`);
+          return;
+        }
+        cardsToUpdate.push({
+          id: dc.id,
+          card_id: dc.card_id,
+          row: dc.row,
+          col: dc.col,
+          size_x: dc.size_x,
+          size_y: dc.size_y,
+        });
+      });
+
+      // Add the new card (with temporary ID -1, Metabase will assign a real one)
+      cardsToUpdate.push({
+        id: -1,
+        card_id: cardId,
+        row: row,
+        col: options.col !== undefined ? options.col : 0,
+        size_x: options.size_x || options.sizeX || 24,
+        size_y: options.size_y || options.sizeY || 8,
+      });
+
+      const body = {
+        cards: cardsToUpdate,
+      };
+
+      const result = await this.makeApiRequest(`/api/dashboard/${dashboardId}/cards`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Card Added to Dashboard Successfully:
+Dashboard ID: ${dashboardId}
+Card ID: ${cardId}
+Position: Row ${row}, Col ${options.col !== undefined ? options.col : 0}
+Size: ${options.size_x || options.sizeX || 24}x${options.size_y || options.sizeY || 8}
+Total cards on dashboard: ${cardsToUpdate.length}
+
+You can view the dashboard at: ${METABASE_URL}/dashboard/${dashboardId}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error adding card to dashboard: ${error.message}`,
           },
         ],
         isError: true,
