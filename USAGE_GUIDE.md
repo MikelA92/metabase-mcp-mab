@@ -74,13 +74,29 @@ node demo.js
 ## 🔧 Configuration
 
 ### **Environment Variables**
-The server uses these environment variables:
-- `METABASE_URL` - Your Metabase instance URL
-- `METABASE_API_KEY` - Your API key
+The server **requires** these environment variables to be set:
+- `METABASE_URL` - Your Metabase instance URL (optional, defaults to `https://data-metabase.swile.co`)
+- `METABASE_API_KEY` - Your API key (**required**)
 
-### **Current Configuration**
-- **URL**: `https://data-metabase.swile.co`
-- **API Key**: `mb_d5MaAfRhXJ6iKP86emIL04G1RuRIz/PB5UDPiOfeK4U=`
+### **Configuration via mcp.json**
+When using with Cursor/Claude Desktop, configure these in your `~/.cursor/mcp.json` file:
+
+```json
+{
+  "mcpServers": {
+    "metabase-local": {
+      "command": "node",
+      "args": ["/path/to/metabase-mcp-mab/src/server/index.js"],
+      "env": {
+        "METABASE_URL": "https://data-metabase.swile.co",
+        "METABASE_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**Note**: The API key is required and must be provided via environment variables. There is no hardcoded default for security reasons.
 
 ---
 

@@ -10,7 +10,11 @@ import {
 //
 // Metabase configuration
 const METABASE_URL = process.env.METABASE_URL || 'https://data-metabase.swile.co';
-const API_KEY = process.env.METABASE_API_KEY || 'mb_d5MaAfRhXJ6iKP86emIL04G1RuRIz/PB5UDPiOfeK4U=';
+const API_KEY = process.env.METABASE_API_KEY;
+
+if (!API_KEY) {
+  throw new Error('METABASE_API_KEY environment variable is required. Please set it in your mcp.json configuration or environment.');
+}
 
 class MetabaseMCPServer {
   constructor() {
