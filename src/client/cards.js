@@ -800,11 +800,17 @@ export function createMetabaseClient(metabaseUrl, apiKey) {
 
 // Default configuration (can be overridden)
 export const DEFAULT_CONFIG = {
-  metabaseUrl: 'https://data-metabase.swile.co',
-  apiKey: 'mb_d5MaAfRhXJ6iKP86emIL04G1RuRIz/PB5UDPiOfeK4U=',
+  metabaseUrl: process.env.METABASE_URL || 'https://data-metabase.swile.co',
 };
 
 // Convenience function to create client with default config
+// Reads API key from environment variables for security
 export function createDefaultClient() {
-  return new MetabaseClient(DEFAULT_CONFIG.metabaseUrl, DEFAULT_CONFIG.apiKey);
+  const apiKey = process.env.METABASE_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('METABASE_API_KEY environment variable is required. Please set it in your environment or mcp.json configuration.');
+  }
+  
+  return new MetabaseClient(DEFAULT_CONFIG.metabaseUrl, apiKey);
 }
