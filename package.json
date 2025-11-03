@@ -1,7 +1,7 @@
 {
   "name": "mcp-metabase",
-  "version": "1.0.0",
-  "description": "MCP server for Metabase API integration",
+  "version": "2.1.0",
+  "description": "MCP server for Metabase API integration with write operations support",
   "type": "module",
   "main": "src/server/index.js",
   "scripts": {

@@ -788,6 +788,239 @@ class MetabaseClient {
       fullResults: results
     };
   }
+
+  // ========================================
+  // WRITE OPERATIONS - CARDS
+  // ========================================
+
+  /**
+   * Create a new card (question) in Metabase
+   * @param {Object} cardData - Card data including name, dataset_query, display, etc.
+   * @returns {Promise<Object>} Created card information
+   */
+  async createCard(cardData) {
+    const body = {
+      name: cardData.name,
+      description: cardData.description || null,
+      dataset_query: cardData.dataset_query,
+      display: cardData.display,
+      visualization_settings: cardData.visualization_settings || {},
+      collection_id: cardData.collection_id || null,
+    };
+
+    return await this.makeRequest('/api/card', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Update an existing card
+   * @param {number} cardId - The card ID to update
+   * @param {Object} updates - Updated card data
+   * @returns {Promise<Object>} Updated card information
+   */
+  async updateCard(cardId, updates) {
+    if (!cardId || cardId < 1) {
+      throw new Error('Card ID must be a positive integer');
+    }
+
+    // Get the current card first
+    const currentCard = await this.makeRequest(`/api/card/${cardId}`);
+    
+    // Merge updates with current card data
+    const body = {
+      name: updates.name || currentCard.name,
+      description: updates.description !== undefined ? updates.description : currentCard.description,
+      dataset_query: updates.dataset_query || currentCard.dataset_query,
+      display: updates.display || currentCard.display,
+      visualization_settings: updates.visualization_settings || currentCard.visualization_settings,
+      collection_id: updates.collection_id !== undefined ? updates.collection_id : currentCard.collection_id,
+    };
+
+    return await this.makeRequest(`/api/card/${cardId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // ========================================
+  // WRITE OPERATIONS - COLLECTIONS
+  // ========================================
+
+  /**
+   * Create a new collection
+   * @param {Object} collectionData - Collection data including name, description, etc.
+   * @returns {Promise<Object>} Created collection information
+   */
+  async createCollection(collectionData) {
+    const body = {
+      name: collectionData.name,
+      description: collectionData.description || null,
+      color: collectionData.color || '#509EE3',
+      parent_id: collectionData.parent_id || null,
+    };
+
+    return await this.makeRequest('/api/collection', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Update an existing collection
+   * @param {number} collectionId - The collection ID to update
+   * @param {Object} updates - Updated collection data
+   * @returns {Promise<Object>} Updated collection information
+   */
+  async updateCollection(collectionId, updates) {
+    if (!collectionId || collectionId < 1) {
+      throw new Error('Collection ID must be a positive integer');
+    }
+
+    // Get the current collection first
+    const currentCollection = await this.makeRequest(`/api/collection/${collectionId}`);
+    
+    // Merge updates with current collection data
+    const body = {
+      name: updates.name || currentCollection.name,
+      description: updates.description !== undefined ? updates.description : currentCollection.description,
+      color: updates.color || currentCollection.color,
+      archived: updates.archived !== undefined ? updates.archived : currentCollection.archived,
+    };
+
+    return await this.makeRequest(`/api/collection/${collectionId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // ========================================
+  // WRITE OPERATIONS - DASHBOARDS
+  // ========================================
+
+  /**
+   * Create a new dashboard
+   * @param {Object} dashboardData - Dashboard data including name, description, etc.
+   * @returns {Promise<Object>} Created dashboard information
+   */
+  async createDashboard(dashboardData) {
+    const body = {
+      name: dashboardData.name,
+      description: dashboardData.description || null,
+      collection_id: dashboardData.collection_id || null,
+      parameters: dashboardData.parameters || [],
+    };
+
+    return await this.makeRequest('/api/dashboard', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Update an existing dashboard
+   * @param {number} dashboardId - The dashboard ID to update
+   * @param {Object} updates - Updated dashboard data
+   * @returns {Promise<Object>} Updated dashboard information
+   */
+  async updateDashboard(dashboardId, updates) {
+    if (!dashboardId || dashboardId < 1) {
+      throw new Error('Dashboard ID must be a positive integer');
+    }
+
+    // Get the current dashboard first
+    const currentDashboard = await this.makeRequest(`/api/dashboard/${dashboardId}`);
+    
+    // Merge updates with current dashboard data
+    const body = {
+      name: updates.name || currentDashboard.name,
+      description: updates.description !== undefined ? updates.description : currentDashboard.description,
+      collection_id: updates.collection_id !== undefined ? updates.collection_id : currentDashboard.collection_id,
+      parameters: updates.parameters || currentDashboard.parameters,
+      archived: updates.archived !== undefined ? updates.archived : currentDashboard.archived,
+    };
+
+    return await this.makeRequest(`/api/dashboard/${dashboardId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Update dashboard cards (bulk update)
+   * @param {number} dashboardId - The dashboard ID
+   * @param {Array} cards - Array of dashboard cards with positioning
+   * @returns {Promise<Object>} Update result
+   */
+  async updateDashboardCards(dashboardId, cards) {
+    if (!dashboardId || dashboardId < 1) {
+      throw new Error('Dashboard ID must be a positive integer');
+    }
+
+    const body = {
+      cards: cards,
+    };
+
+    return await this.makeRequest(`/api/dashboard/${dashboardId}/cards`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // ========================================
+  // WRITE OPERATIONS - DATABASES
+  // ========================================
+
+  /**
+   * Create a new database connection
+   * @param {Object} databaseData - Database connection data
+   * @returns {Promise<Object>} Created database information
+   */
+  async createDatabase(databaseData) {
+    const body = {
+      name: databaseData.name,
+      engine: databaseData.engine,
+      details: databaseData.details,
+      is_full_sync: databaseData.is_full_sync !== undefined ? databaseData.is_full_sync : true,
+      is_on_demand: databaseData.is_on_demand !== undefined ? databaseData.is_on_demand : false,
+    };
+
+    return await this.makeRequest('/api/database', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Update an existing database connection
+   * @param {number} databaseId - The database ID to update
+   * @param {Object} updates - Updated database data
+   * @returns {Promise<Object>} Updated database information
+   */
+  async updateDatabase(databaseId, updates) {
+    if (!databaseId || databaseId < 1) {
+      throw new Error('Database ID must be a positive integer');
+    }
+
+    // Get the current database first
+    const currentDatabase = await this.makeRequest(`/api/database/${databaseId}`);
+    
+    // Merge updates with current database data
+    const body = {
+      name: updates.name || currentDatabase.name,
+      engine: updates.engine || currentDatabase.engine,
+      details: updates.details || currentDatabase.details,
+      is_full_sync: updates.is_full_sync !== undefined ? updates.is_full_sync : currentDatabase.is_full_sync,
+      is_on_demand: updates.is_on_demand !== undefined ? updates.is_on_demand : currentDatabase.is_on_demand,
+      auto_run_queries: updates.auto_run_queries !== undefined ? updates.auto_run_queries : currentDatabase.auto_run_queries,
+    };
+
+    return await this.makeRequest(`/api/database/${databaseId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
 }
 
 // Export for use in other modules
