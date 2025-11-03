@@ -1,6 +1,6 @@
 # Metabase MCP Server
 
-A Model Context Protocol (MCP) server that enables LLMs to interact with your Metabase instance. This server provides 27 tools for querying cards, dashboards, databases, collections, and executing queries against your Metabase installation.
+A Model Context Protocol (MCP) server that enables LLMs to interact with your Metabase instance. This server provides 33 tools for querying cards, dashboards, databases, collections, and executing queries against your Metabase installation.
 
 ## 🚀 Quick Start
 
