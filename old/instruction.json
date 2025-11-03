@@ -1,0 +1,60 @@
+{
+    "name": "Setup Local Docker MCP Server for Metabase",
+    "description": "Instructions for an LLM or agent to create, configure, and run a local MCP server that connects to Metabase’s API to fetch question (card) details using the endpoint /api/card/:id.",
+    "steps": [
+      {
+        "step": 1,
+        "title": "Create Project Structure",
+        "details": "Initialize a folder named 'mcp-metabase' with the following structure:\n\nmcp-metabase/\n├─ src/\n│  ├─ client/\n│  │  └─ cards.js\n│  ├─ server/\n│  │  └─ index.js\n├─ .env\n├─ package.json\n├─ Dockerfile\n\nThis structure separates API logic (client) from the MCP routing logic (server)."
+      },
+      {
+        "step": 2,
+        "title": "Define Environment Variables",
+        "details": "Create a file named '.env' at the project root containing:\n\nMETABASE_URL=https://your-metabase-url.com\nMETABASE_API_KEY=your_metabase_api_key\n\nThese variables store the Metabase instance URL and API key securely. The MCP server will read them at runtime."
+      },
+      {
+        "step": 3,
+        "title": "Install Dependencies",
+        "details": "Initialize the Node.js project and install the necessary libraries:\n\nnpm init -y\nnpm install axios dotenv @modelcontextprotocol/sdk\n\n- axios: to perform HTTP requests to the Metabase API\n- dotenv: to load environment variables from the .env file\n- @modelcontextprotocol/sdk: to expose MCP tools compatible with MCP clients"
+      },
+      {
+        "step": 4,
+        "title": "Create the Metabase Client",
+        "file": "src/client/cards.js",
+        "details": "This file handles the connection to Metabase’s API and fetches the details of a card (question).\n\n```js\nimport axios from 'axios';\nimport dotenv from 'dotenv';\ndotenv.config();\n\nconst client = axios.create({\n  baseURL: process.env.METABASE_URL,\n  headers: { 'X-Metabase-Session': process.env.METABASE_API_KEY }\n});\n\nexport async function getCard(cardId) {\n  const { data } = await client.get(`/api/card/${cardId}`);\n  return {\n    id: data.id,\n    name: data.name,\n    dataset_query: data.dataset_query,\n    display: data.display\n  };\n}\n```"
+      },
+      {
+        "step": 5,
+        "title": "Create the MCP Server",
+        "file": "src/server/index.js",
+        "details": "The MCP server exposes tools to clients using the Model Context Protocol. It delegates logic to the client functions.\n\n```js\nimport { Server } from '@modelcontextprotocol/sdk/server/index.js';\nimport { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';\nimport { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';\nimport { getCard } from '../client/cards.js';\n\nconst server = new Server(\n  { name: 'mcp-metabase', version: '1.0.0' },\n  { capabilities: { tools: {} } }\n);\n\nserver.setRequestHandler(ListToolsRequestSchema, async () => ({\n  tools: [{\n    name: 'metabase_get_card',\n    description: 'Fetches details of a Metabase question (card) by ID',\n    inputSchema: {\n      type: 'object',\n      properties: { cardId: { type: 'number', description: 'The ID of the card to fetch' } },\n      required: ['cardId']\n    }\n  }]\n}));\n\nserver.setRequestHandler(CallToolRequestSchema, async (request) => {\n  if (request.params.name === 'metabase_get_card') {\n    const result = await getCard(request.params.arguments.cardId);\n    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };\n  }\n  throw new Error(`Unknown tool: ${request.params.name}`);\n});\n\nasync function main() {\n  const transport = new StdioServerTransport();\n  await server.connect(transport);\n}\n\nmain().catch((error) => { console.error('Server error:', error); process.exit(1); });\n```"
+      },
+      {
+        "step": 6,
+        "title": "Create the Dockerfile",
+        "file": "Dockerfile",
+        "details": "Containerize the MCP server so it can be run anywhere.\n\n```dockerfile\nFROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --production\nCOPY src ./src\nCOPY .env .env\nCMD ['node', 'src/server/index.js']\n```"
+      },
+      {
+        "step": 7,
+        "title": "Build the Docker Image",
+        "details": "Run the following command to build the image:\n\n```bash\ndocker build -t mcp-metabase .\n```"
+      },
+      {
+        "step": 8,
+        "title": "Run the MCP Server Locally",
+        "details": "Start the container and load environment variables from .env:\n\n```bash\ndocker run --rm --env-file .env mcp-metabase\n```\n\nThis will launch the MCP server locally inside Docker, ready to serve requests like:\n\n```json\n{\n  'method': 'metabase.get_card',\n  'params': { 'cardId': 123 }\n}\n```"
+      },
+      {
+        "step": 9,
+        "title": "Verify the MCP Server Works",
+        "details": "Use an MCP-compatible client (e.g., ChatGPT or an internal JSON-RPC tester) to call the method:\n\n- Method: `metabase.get_card`\n- Parameters: `{ 'cardId': 123 }`\n\nExpected response:\n```json\n{\n  'id': 123,\n  'name': 'Revenue by Region',\n  'dataset_query': { ... },\n  'display': 'bar'\n}\n```"
+      },
+      {
+        "step": 10,
+        "title": "Conceptual Summary",
+        "details": "1. The **client** (`cards.js`) handles the HTTP calls to the Metabase API.\n2. The **server** (`index.js`) exposes clean MCP methods that ChatGPT can use.\n3. Docker packages everything so you can run it anywhere with the same configuration.\n4. `.env` holds the URL and credentials safely.\n5. The `/api/card/:id` endpoint shows how a Metabase question is structured — its SQL, dataset_id, and visualization type.\n\nThis provides a minimal but complete MCP server pattern you can extend later with more Metabase API calls."
+      }
+    ]
+  }
+  
