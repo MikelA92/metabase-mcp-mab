@@ -2,6 +2,10 @@
 
 A Model Context Protocol (MCP) server that enables LLMs to interact with your Metabase instance. This server provides 33 tools for querying cards, dashboards, databases, collections, and executing queries against your Metabase installation.
 
+<a href="https://glama.ai/mcp/servers/@MikelA92/metabase-mcp-mab">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@MikelA92/metabase-mcp-mab/badge" alt="Metabase Server MCP server" />
+</a>
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -254,4 +258,3 @@ Contributions welcome! Please ensure:
 - Node.js >= 18.0.0
 - All tests pass
 - Code follows existing patterns
-
